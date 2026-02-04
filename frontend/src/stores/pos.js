@@ -1,0 +1,102 @@
+import { defineStore } from 'pinia';
+import { db } from '../services/db';
+import { v4 as uuidv4 } from 'uuid';
+
+export const usePosStore = defineStore('pos', {
+  state: () => ({
+    products: [],
+    cart: [],
+    isOnline: navigator.onLine
+  }),
+  actions: {
+    async init() {
+        this.products = await db.getProducts();
+        
+        window.addEventListener('online', () => {
+            this.isOnline = true;
+            this.sync();
+        });
+        window.addEventListener('offline', () => {
+            this.isOnline = false;
+        });
+
+        if (this.isOnline) {
+            this.sync();
+        }
+    },
+    async sync() {
+        await this.syncProducts();
+        await this.syncOrders();
+    },
+    async syncProducts() {
+        try {
+            // Replace with actual API endpoint and token
+            const res = await fetch('http://localhost:8000/api/products', {
+                headers: { 
+                    'Accept': 'application/json',
+                    // 'Authorization': 'Bearer ...' 
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                await db.setProducts(data);
+                this.products = data;
+            }
+        } catch (e) {
+            console.error('Failed to sync products', e);
+        }
+    },
+    async createOrder() {
+        if (this.cart.length === 0) return;
+        
+        const order = {
+            uuid: uuidv4(),
+            items: this.cart.map(item => ({
+                product_id: item.id,
+                quantity: item.quantity,
+                unit_price: item.price
+            })),
+            total_amount: this.cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+            synced: false,
+            created_at: new Date().toISOString()
+        };
+        
+        await db.addOrder(order);
+        this.cart = [];
+        
+        if (this.isOnline) {
+            this.syncOrders();
+        }
+    },
+    async syncOrders() {
+        const unsynced = await db.getUnsyncedOrders();
+        for (const order of unsynced) {
+            try {
+                const res = await fetch('http://localhost:8000/api/orders', { 
+                    method: 'POST', 
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        // 'Authorization': 'Bearer ...'
+                    },
+                    body: JSON.stringify(order) 
+                });
+                
+                if (res.ok) {
+                    await db.markOrderSynced(order.uuid);
+                }
+            } catch (e) {
+                console.error('Sync failed for order', order.uuid, e);
+            }
+        }
+    },
+    addToCart(product) {
+        const existing = this.cart.find(i => i.id === product.id);
+        if (existing) {
+            existing.quantity++;
+        } else {
+            this.cart.push({ ...product, quantity: 1 });
+        }
+    }
+  }
+});
