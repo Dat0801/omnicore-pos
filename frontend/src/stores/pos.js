@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { db } from '../services/db';
+import { productService } from '../services/productService';
 import { v4 as uuidv4 } from 'uuid';
 
 export const usePosStore = defineStore('pos', {
@@ -10,7 +11,7 @@ export const usePosStore = defineStore('pos', {
   }),
   actions: {
     async init() {
-        this.products = await db.getProducts();
+        this.products = await productService.getAll();
         
         window.addEventListener('online', () => {
             this.isOnline = true;
@@ -30,18 +31,7 @@ export const usePosStore = defineStore('pos', {
     },
     async syncProducts() {
         try {
-            // Replace with actual API endpoint and token
-            const res = await fetch('http://localhost:8000/api/products', {
-                headers: { 
-                    'Accept': 'application/json',
-                    // 'Authorization': 'Bearer ...' 
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                await db.setProducts(data);
-                this.products = data;
-            }
+            this.products = await productService.sync();
         } catch (e) {
             console.error('Failed to sync products', e);
         }
