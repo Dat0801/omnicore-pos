@@ -74,5 +74,15 @@ export const db = {
         order.synced = true;
         await db.put('orders', order);
     }
+  },
+  async getOrders() {
+    return (await dbPromise).getAll('orders');
+  },
+  async getOrderSummary() {
+    const orders = await (await dbPromise).getAll('orders');
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount ?? 0), 0);
+    const allSynced = orders.every(o => o.synced === true);
+    return { totalOrders, totalRevenue, allSynced };
   }
 };

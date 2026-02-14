@@ -1,6 +1,7 @@
 import { db } from './db';
 
-const API_URL = 'http://localhost:8000/api/products';
+const API_BASE = import.meta.env.VITE_POS_API_URL ?? 'http://localhost:8001';
+const API_URL = `${API_BASE}/api/products`;
 
 export const productService = {
   /**
@@ -9,9 +10,12 @@ export const productService = {
    */
   async sync() {
     try {
-      const res = await fetch(API_URL, { 
-        headers: { 'Accept': 'application/json' } 
-      });
+      const headers = { Accept: 'application/json' };
+      const token = import.meta.env.VITE_POS_API_TOKEN;
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const res = await fetch(API_URL, { headers });
       
       if (!res.ok) {
         throw new Error(`Sync failed: ${res.statusText}`);
