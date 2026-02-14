@@ -1,10 +1,21 @@
 import { openDB } from 'idb';
 
-const dbPromise = openDB('omnicore-pos', 1, {
-  upgrade(db) {
+const dbPromise = openDB('omnicore-pos', 2, {
+  upgrade(db, oldVersion, newVersion, transaction) {
+    let productStore;
     if (!db.objectStoreNames.contains('products')) {
-      db.createObjectStore('products', { keyPath: 'id' });
+      productStore = db.createObjectStore('products', { keyPath: 'id' });
+    } else {
+      productStore = transaction.objectStore('products');
     }
+
+    if (!productStore.indexNames.contains('name')) {
+      productStore.createIndex('name', 'name', { unique: false });
+    }
+    if (!productStore.indexNames.contains('sku')) {
+      productStore.createIndex('sku', 'sku', { unique: true });
+    }
+
     if (!db.objectStoreNames.contains('orders')) {
       const orderStore = db.createObjectStore('orders', { keyPath: 'uuid' });
       orderStore.createIndex('synced', 'synced');
@@ -16,12 +27,37 @@ export const db = {
   async getProducts() {
     return (await dbPromise).getAll('products');
   },
-  async setProducts(products) {
-    const tx = (await dbPromise).transaction('products', 'readwrite');
-    await Promise.all([
-      tx.store.clear(),
-      ...products.map(product => tx.store.put(product))
-    ]);
+  async findProductBySku(sku) {
+    return (await dbPromise).getFromIndex('products', 'sku', sku);
+  },
+  async findProductsByName(name) {
+    return (await dbPromise).getAllFromIndex('products', 'name', name);
+  },
+  async syncProducts(products) {
+    const db = await dbPromise;
+    const tx = db.transaction('products', 'readwrite');
+    const store = tx.objectStore('products');
+
+    // Get all existing IDs
+    const existingKeys = await store.getAllKeys();
+    const existingIds = new Set(existingKeys);
+    
+    // Prepare incoming IDs
+    const incomingIds = new Set(products.map(p => p.id));
+
+    // Determine deletions
+    const toDelete = existingKeys.filter(id => !incomingIds.has(id));
+
+    // Perform updates/inserts
+    for (const product of products) {
+        store.put(product);
+    }
+
+    // Perform deletions
+    for (const id of toDelete) {
+        store.delete(id);
+    }
+
     await tx.done;
   },
   async addOrder(order) {
@@ -38,5 +74,15 @@ export const db = {
         order.synced = true;
         await db.put('orders', order);
     }
+  },
+  async getOrders() {
+    return (await dbPromise).getAll('orders');
+  },
+  async getOrderSummary() {
+    const orders = await (await dbPromise).getAll('orders');
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount ?? 0), 0);
+    const allSynced = orders.every(o => o.synced === true);
+    return { totalOrders, totalRevenue, allSynced };
   }
 };

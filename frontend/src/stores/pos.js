@@ -1,16 +1,30 @@
 import { defineStore } from 'pinia';
 import { db } from '../services/db';
+import { productService } from '../services/productService';
 import { v4 as uuidv4 } from 'uuid';
+
+const API_BASE = import.meta.env.VITE_POS_API_URL ?? 'http://localhost:8001';
+const API_ORDERS = `${API_BASE}/api/orders`;
+const AUTH_HEADER = (() => {
+  const token = import.meta.env.VITE_POS_API_TOKEN;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+})();
 
 export const usePosStore = defineStore('pos', {
   state: () => ({
     products: [],
     cart: [],
-    isOnline: navigator.onLine
+    isOnline: navigator.onLine,
+    stats: {
+      totalOrders: 0,
+      totalRevenue: 0,
+      allSynced: true
+    }
   }),
   actions: {
     async init() {
-        this.products = await db.getProducts();
+        this.products = await productService.getAll();
+        await this.loadStats();
         
         window.addEventListener('online', () => {
             this.isOnline = true;
@@ -24,24 +38,22 @@ export const usePosStore = defineStore('pos', {
             this.sync();
         }
     },
+    async loadStats() {
+        try {
+            const s = await db.getOrderSummary();
+            this.stats = s;
+        } catch (e) {
+            console.error('Failed to load order summary', e);
+        }
+    },
     async sync() {
         await this.syncProducts();
         await this.syncOrders();
+        await this.loadStats();
     },
     async syncProducts() {
         try {
-            // Replace with actual API endpoint and token
-            const res = await fetch('http://localhost:8000/api/products', {
-                headers: { 
-                    'Accept': 'application/json',
-                    // 'Authorization': 'Bearer ...' 
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                await db.setProducts(data);
-                this.products = data;
-            }
+            this.products = await productService.sync();
         } catch (e) {
             console.error('Failed to sync products', e);
         }
@@ -67,17 +79,18 @@ export const usePosStore = defineStore('pos', {
         if (this.isOnline) {
             this.syncOrders();
         }
+        await this.loadStats();
     },
     async syncOrders() {
         const unsynced = await db.getUnsyncedOrders();
         for (const order of unsynced) {
             try {
-                const res = await fetch('http://localhost:8000/api/orders', { 
+                const res = await fetch(API_ORDERS, { 
                     method: 'POST', 
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        // 'Authorization': 'Bearer ...'
+                        ...AUTH_HEADER,
                     },
                     body: JSON.stringify(order) 
                 });
@@ -89,6 +102,7 @@ export const usePosStore = defineStore('pos', {
                 console.error('Sync failed for order', order.uuid, e);
             }
         }
+        await this.loadStats();
     },
     addToCart(product) {
         const existing = this.cart.find(i => i.id === product.id);
