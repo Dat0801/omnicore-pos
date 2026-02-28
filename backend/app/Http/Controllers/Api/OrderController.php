@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SubmitOrderToErp;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,8 +44,7 @@ class OrderController extends Controller
             return $order;
         });
 
-        // TODO: Dispatch job to sync with ERP
-        // SyncOrderToErp::dispatch($order);
+        SubmitOrderToErp::dispatch($order);
 
         return response()->json($order, 201);
     }

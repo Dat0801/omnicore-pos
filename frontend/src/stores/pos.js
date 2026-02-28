@@ -19,7 +19,8 @@ export const usePosStore = defineStore('pos', {
       totalOrders: 0,
       totalRevenue: 0,
       allSynced: true
-    }
+    },
+    orders: []
   }),
   actions: {
     async init() {
@@ -103,6 +104,13 @@ export const usePosStore = defineStore('pos', {
             }
         }
         await this.loadStats();
+    },
+    async loadOrders() {
+        try {
+            this.orders = await db.getOrders();
+        } catch (e) {
+            console.error('Failed to load orders', e);
+        }
     },
     addToCart(product) {
         const existing = this.cart.find(i => i.id === product.id);

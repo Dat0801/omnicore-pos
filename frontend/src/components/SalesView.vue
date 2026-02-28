@@ -34,7 +34,7 @@ const normalizedProducts = computed(() => {
     name: p.name ?? p.title ?? 'Unnamed Product',
     sku: p.sku ?? `SKU-${(idx + 1).toString().padStart(4, '0')}`,
     price: Number(p.price ?? p.unit_price ?? 0),
-    stock: Number(p.stock ?? p.quantity ?? 0),
+    stock: Number(p.stock ?? p.stock_quantity ?? p.quantity ?? 0),
     category: p.category ?? 'Electronics',
     image:
       p.imageUrl ??

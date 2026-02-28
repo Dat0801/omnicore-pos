@@ -1,21 +1,39 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { usePosStore } from '../stores/pos';
 
-const filters = ref(['All', 'Synced', 'Failed']);
+const filters = ref(['All', 'Synced', 'Pending']);
 const activeFilter = ref('All');
 
-const orders = ref([
-  { id: 8824, total: 142.0, minutes: 2, status: 'FAILED' },
-  { id: 8823, total: 54.9, minutes: 14, status: 'SYNCED' },
-  { id: 8822, total: 210.0, minutes: 42, status: 'SYNCED' },
-  { id: 8821, total: 12.5, minutes: 60, status: 'SYNCED' },
-  { id: 8820, total: 88.0, minutes: 120, status: 'SYNCED' },
-]);
+const store = usePosStore();
 
-const current = ref(orders.value[0]);
+onMounted(async () => {
+  await store.loadOrders();
+});
+
+const filteredOrders = computed(() => {
+  const all = store.orders
+    .slice()
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  if (activeFilter.value === 'Synced') {
+    return all.filter((o) => o.synced);
+  }
+
+  if (activeFilter.value === 'Pending') {
+    return all.filter((o) => !o.synced);
+  }
+
+  return all;
+});
+
+const current = computed(() => filteredOrders.value[0] ?? null);
 
 function select(o) {
-  current.value = o;
+  const index = filteredOrders.value.findIndex((x) => x.uuid === o.uuid);
+  if (index !== -1) {
+    filteredOrders.value.unshift(...filteredOrders.value.splice(index, 1));
+  }
 }
 </script>
 
@@ -69,23 +87,23 @@ function select(o) {
         </div>
         <div class="mt-3">
           <button
-            v-for="o in orders"
-            :key="o.id"
+            v-for="o in filteredOrders"
+            :key="o.uuid"
             class="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50"
             :class="current?.id === o.id ? 'bg-blue-50 ring-1 ring-blue-200' : ''"
             @click="select(o)"
           >
             <div>
-              <p class="text-sm font-semibold">Order #{{ o.id }}</p>
-              <p class="text-xs text-slate-500">{{ o.minutes }} mins ago</p>
+              <p class="text-sm font-semibold">Order #{{ o.uuid }}</p>
+              <p class="text-xs text-slate-500">{{ new Date(o.created_at).toLocaleString() }}</p>
             </div>
             <div class="text-right">
-              <p class="text-sm font-semibold">${{ o.total.toFixed(2) }}</p>
+              <p class="text-sm font-semibold">${{ (o.total_amount ?? 0).toFixed(2) }}</p>
               <div class="mt-1 inline-flex items-center gap-1 text-xs font-semibold"
-                   :class="o.status === 'SYNCED' ? 'text-emerald-700' : 'text-rose-700'">
+                   :class="o.synced ? 'text-emerald-700' : 'text-amber-700'">
                 <span class="h-2 w-2 rounded-full"
-                      :class="o.status === 'SYNCED' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
-                {{ o.status }}
+                      :class="o.synced ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                {{ o.synced ? 'SYNCED' : 'PENDING' }}
               </div>
             </div>
           </button>
@@ -235,4 +253,3 @@ function select(o) {
 
 <style scoped>
 </style>
-
